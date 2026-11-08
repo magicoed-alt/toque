@@ -6,15 +6,17 @@
 <meta name="theme-color" content="#0b0f14">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Toque">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Sequência de Toque</title>
 <style>
 :root{--bg:#0b0f14;--card:#141b24;--line:#233041;--cy:#22d3ee;--tx:#f1f5f9;--mut:#8aa0b5}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,system-ui,sans-serif}
-body{padding:20px;max-width:900px;margin:0 auto}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,system-ui,sans-serif;overscroll-behavior:none}
+body{padding:20px;padding-top:max(20px,env(safe-area-inset-top));max-width:900px;margin:0 auto}
+body.showing{position:fixed;inset:0;overflow:hidden;width:100%;padding:0}
 h1{font-size:22px;margin:0 0 4px}h1 span{color:var(--cy)}
 p.sub{color:var(--mut);margin:0 0 20px;font-size:14px}
 section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
@@ -22,8 +24,21 @@ h2{font-size:15px;margin:0 0 12px;color:var(--cy);text-transform:uppercase;lette
 button,label.btn{font:inherit;border:1px solid var(--line);background:#1b2633;color:var(--tx);padding:10px 14px;border-radius:10px;cursor:pointer;display:inline-block}
 button.pri,label.btn.pri{background:var(--cy);color:#04222a;border-color:var(--cy);font-weight:700}
 button.big{width:100%;padding:16px;font-size:18px}
-button:disabled{opacity:.4}
+button.danger{border-color:#7f1d1d;background:#3b1212}
+input[type=text]{font:inherit;color:var(--tx);background:#0f151d;border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row input[type=text]{flex:1;min-width:160px}
+/* pastas */
+#folders{display:flex;flex-direction:column;gap:8px;margin-bottom:4px}
+.fo{display:flex;gap:8px;align-items:center;background:#0f151d;border:1px solid var(--line);border-radius:12px;padding:10px}
+.fo .ic{font-size:26px;width:36px;text-align:center}
+.fo .fi{flex:1;min-width:0;cursor:pointer;padding:4px 0}
+.fo .fn{font-size:17px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fo .fc{font-size:13px;color:var(--mut)}
+.fo button{padding:10px 13px}
+.top{display:flex;gap:10px;align-items:center;margin-bottom:16px}
+.top input{flex:1;font-size:20px;font-weight:700}
+/* itens */
 #list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
 .it{display:flex;gap:10px;align-items:center;background:#0f151d;border:1px solid var(--line);border-radius:10px;padding:8px}
 .it .n{width:26px;text-align:center;color:var(--cy);font-weight:700}
@@ -35,9 +50,8 @@ button:disabled{opacity:.4}
 #zoneStage span{position:absolute;left:8px;top:6px;font-size:12px;color:var(--mut);pointer-events:none}
 .chk{display:flex;gap:8px;align-items:center;margin-top:8px;color:var(--mut);font-size:14px}
 .chk input{width:20px;height:20px}
-#status{font-size:12px;color:var(--mut);margin-top:8px}
-html,body{overscroll-behavior:none}
-body.showing{position:fixed;inset:0;overflow:hidden;width:100%}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1b2633;border:1px solid var(--line);padding:10px 16px;border-radius:10px;font-size:14px;z-index:200;display:none;max-width:90%}
+/* apresentação */
 #show,#show *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
 #show{position:fixed;inset:0;background:#000;display:none;z-index:99;touch-action:none;overscroll-behavior:none}
 #show.on{display:block}
@@ -47,57 +61,138 @@ body.showing{position:fixed;inset:0;overflow:hidden;width:100%}
 </style>
 </head>
 <body>
-<h1>Sequência de <span>Toque</span></h1>
-<p class="sub">Monte a sequência, marque a área de toque e apresente. Cada toque na área passa para o próximo item.</p>
 
-<section>
-  <h2>1 · Fotos e vídeos</h2>
-  <div class="row">
-    <label class="btn pri">+ Adicionar da galeria<input id="file" type="file" accept="image/*,video/*" multiple hidden></label>
-    <button id="clear">Limpar tudo</button>
+<!-- TELA 1: lista de mágicas -->
+<div id="home">
+  <h1>Sequência de <span>Toque</span></h1>
+  <p class="sub">Uma pasta para cada mágica. Toque na pasta para editar, ou em ▶ para apresentar direto.</p>
+  <section>
+    <h2>Minhas mágicas</h2>
+    <div id="folders"></div>
+    <div class="row" style="margin-top:12px">
+      <input id="newName" type="text" placeholder="Nome da nova mágica" maxlength="60">
+      <button id="newBtn" class="pri">+ Nova pasta</button>
+    </div>
+  </section>
+</div>
+
+<!-- TELA 2: dentro de uma pasta -->
+<div id="folder" hidden>
+  <div class="top">
+    <button id="back">← Mágicas</button>
+    <input id="fname" type="text" maxlength="60" aria-label="Nome da mágica">
   </div>
-  <div id="list"></div>
-  <div id="status"></div>
-</section>
 
-<section>
-  <h2>2 · Área de toque</h2>
-  <div class="row">
-    <button data-z="0,0,1,1">Tela toda</button>
-    <button data-z="0.5,0,0.5,1">Metade direita</button>
-    <button data-z="0,0,0.5,1">Metade esquerda</button>
-    <button data-z="0,0.5,1,0.5">Metade de baixo</button>
-    <button data-z="0.3,0.3,0.4,0.4">Centro</button>
-  </div>
-  <div id="zoneStage"><span>Arraste aqui para desenhar a área</span><div id="zoneBox"></div></div>
-  <label class="chk"><input id="loop" type="checkbox"> Voltar ao primeiro depois do último</label>
-  <label class="chk"><input id="hint" type="checkbox"> Mostrar contorno da área durante a apresentação (para testar)</label>
-</section>
+  <section>
+    <h2>1 · Fotos e vídeos</h2>
+    <div class="row">
+      <label class="btn pri">+ Adicionar da galeria<input id="file" type="file" accept="image/*,video/*" multiple hidden></label>
+      <button id="clear">Limpar pasta</button>
+    </div>
+    <div id="list"></div>
+  </section>
 
-<section>
-  <h2>3 · Apresentar</h2>
-  <button id="go" class="pri big">▶ Iniciar apresentação</button>
-  <p class="sub" style="margin:10px 0 0">Sair: toque 3 vezes no canto superior esquerdo. Voltar um item: toque no canto superior direito.</p>
-</section>
+  <section>
+    <h2>2 · Área de toque</h2>
+    <div class="row">
+      <button data-z="0,0,1,1">Tela toda</button>
+      <button data-z="0.5,0,0.5,1">Metade direita</button>
+      <button data-z="0,0,0.5,1">Metade esquerda</button>
+      <button data-z="0,0.5,1,0.5">Metade de baixo</button>
+      <button data-z="0.3,0.3,0.4,0.4">Centro</button>
+    </div>
+    <div id="zoneStage"><span>Arraste aqui para desenhar a área</span><div id="zoneBox"></div></div>
+    <label class="chk"><input id="loop" type="checkbox"> Voltar ao primeiro depois do último</label>
+    <label class="chk"><input id="hint" type="checkbox"> Mostrar contorno da área durante a apresentação (para testar)</label>
+  </section>
 
+  <section>
+    <h2>3 · Apresentar</h2>
+    <button id="go" class="pri big">▶ Iniciar apresentação</button>
+    <p class="sub" style="margin:10px 0 0">Sair: toque 3 vezes no canto superior esquerdo. Voltar um item: toque no canto superior direito.</p>
+  </section>
+</div>
+
+<div id="toast"></div>
 <div id="show"><div id="media"></div><div id="zoneHint"></div></div>
 
 <script>
 const $=s=>document.querySelector(s);
-let items=[],zone={x:0,y:0,w:1,h:1},idx=0;
-const opts={loop:false,hint:false};
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+let meta={folders:[]},cur=null,items=[],zone={x:0,y:0,w:1,h:1},idx=0,fromHome=false;
+const memBlobs=new Map();
 
-// ---------- armazenamento (opcional) ----------
+// ---------- aviso rápido ----------
+let tT;function toast(t){const e=$('#toast');clearTimeout(tT);if(!t){e.style.display='none';return}e.textContent=t;e.style.display='block';tT=setTimeout(()=>e.style.display='none',3500)}
+
+// ---------- armazenamento ----------
 function dbOpen(){return new Promise((res,rej)=>{const r=indexedDB.open('seq-toque',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 async function dbSet(k,v){const db=await dbOpen();return new Promise((res,rej)=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})}
 async function dbGet(k){const db=await dbOpen();return new Promise((res,rej)=>{const r=db.transaction('kv').objectStore('kv').get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-async function save(){
-  try{await dbSet('state',{zone,opts,items:items.map(i=>({id:i.id,name:i.name,type:i.type,blob:i.blob}))});$('#status').textContent=items.length?'Salvo neste navegador.':''}
-  catch(e){$('#status').textContent='Não foi possível salvar; os itens valem só até fechar a página.'}
+async function dbDel(k){const db=await dbOpen();return new Promise((res,rej)=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').delete(k);t.oncomplete=res;t.onerror=()=>rej(t.error)})}
+async function saveMeta(){
+  if(cur)cur.items=items.map(i=>({id:i.id,name:i.name,type:i.type}));
+  try{await dbSet('meta',meta)}catch(e){toast('Não foi possível salvar; os dados valem só até fechar o app.')}
 }
 function typeOf(f){if(f.type)return f.type;return /\.(mp4|mov|m4v|webm)$/i.test(f.name)?'video/mp4':'image/jpeg'}
 
-// ---------- lista ----------
+// ---------- telas ----------
+function view(v){$('#home').hidden=v!=='home';$('#folder').hidden=v!=='folder'}
+function releaseItems(){items.forEach(i=>URL.revokeObjectURL(i.url));items=[]}
+function goHome(){releaseItems();cur=null;renderHome();view('home');scrollTo(0,0)}
+function confirmBtn(btn,label,fn){
+  btn.onclick=e=>{e.stopPropagation();
+    if(btn.dataset.sure){fn();return}
+    const old=btn.textContent;btn.dataset.sure=1;btn.textContent=label;
+    setTimeout(()=>{delete btn.dataset.sure;btn.textContent=old},2500)};
+}
+
+// ---------- lista de pastas ----------
+function renderHome(){
+  const l=$('#folders');l.innerHTML='';
+  if(!meta.folders.length){l.innerHTML='<p class="sub" style="margin:0">Nenhuma mágica ainda. Crie a primeira abaixo.</p>'}
+  meta.folders.forEach((f,i)=>{
+    const d=document.createElement('div');d.className='fo';
+    d.innerHTML='<div class="ic">📁</div><div class="fi"><div class="fn"></div><div class="fc"></div></div><button class="pri" data-a="play">▶</button><button data-a="up">↑</button><button data-a="dn">↓</button><button class="danger" data-a="del">✕</button>';
+    d.querySelector('.fn').textContent=f.name;
+    d.querySelector('.fc').textContent=f.items.length+(f.items.length===1?' item':' itens');
+    d.querySelector('.fi').onclick=()=>openFolder(f.id);
+    d.querySelector('.ic').onclick=()=>openFolder(f.id);
+    d.querySelector('[data-a=play]').onclick=e=>{e.stopPropagation();playFolder(f.id)};
+    d.querySelector('[data-a=up]').onclick=e=>{e.stopPropagation();if(i>0){[meta.folders[i-1],meta.folders[i]]=[meta.folders[i],meta.folders[i-1]];saveMeta();renderHome()}};
+    d.querySelector('[data-a=dn]').onclick=e=>{e.stopPropagation();if(i<meta.folders.length-1){[meta.folders[i+1],meta.folders[i]]=[meta.folders[i],meta.folders[i+1]];saveMeta();renderHome()}};
+    confirmBtn(d.querySelector('[data-a=del]'),'Apagar?',async()=>{
+      for(const m of f.items){try{await dbDel('b:'+m.id)}catch(e){}memBlobs.delete(m.id)}
+      meta.folders=meta.folders.filter(x=>x!==f);await saveMeta();renderHome()});
+    l.appendChild(d);
+  });
+}
+$('#newBtn').onclick=()=>{
+  const n=$('#newName').value.trim()||('Mágica '+(meta.folders.length+1));
+  const f={id:uid(),name:n,zone:{x:0,y:0,w:1,h:1},loop:false,hint:false,items:[]};
+  meta.folders.push(f);$('#newName').value='';saveMeta();openFolder(f.id);
+};
+$('#newName').addEventListener('keydown',e=>{if(e.key==='Enter')$('#newBtn').click()});
+
+// ---------- abrir pasta ----------
+async function openFolder(id){
+  const f=meta.folders.find(x=>x.id===id);if(!f)return false;
+  releaseItems();cur=f;toast('Carregando…');
+  for(const m of f.items){
+    let b=memBlobs.get(m.id);
+    if(!b){try{b=await dbGet('b:'+m.id)}catch(e){}}
+    if(b)items.push({...m,blob:b,url:URL.createObjectURL(b)});
+  }
+  zone=f.zone||{x:0,y:0,w:1,h:1};
+  $('#fname').value=f.name;$('#loop').checked=!!f.loop;$('#hint').checked=!!f.hint;
+  renderList();view('folder');fitStage();drawZone();scrollTo(0,0);toast('');
+  return true;
+}
+async function playFolder(id){if(await openFolder(id)){fromHome=true;startShow()}}
+$('#back').onclick=()=>{saveMeta();goHome()};
+$('#fname').onchange=()=>{if(!cur)return;cur.name=$('#fname').value.trim()||cur.name;$('#fname').value=cur.name;saveMeta()};
+
+// ---------- itens da pasta ----------
 function renderList(){
   const l=$('#list');l.innerHTML='';
   items.forEach((it,i)=>{
@@ -111,31 +206,40 @@ function renderList(){
       const a=b.dataset.a;
       if(a==='up'&&i>0)[items[i-1],items[i]]=[items[i],items[i-1]];
       if(a==='dn'&&i<items.length-1)[items[i+1],items[i]]=[items[i],items[i+1]];
-      if(a==='rm'){URL.revokeObjectURL(it.url);items.splice(i,1)}
-      renderList();save();
+      if(a==='rm'){URL.revokeObjectURL(it.url);items.splice(i,1);dbDel('b:'+it.id).catch(()=>{});memBlobs.delete(it.id)}
+      renderList();saveMeta();
     });
     l.appendChild(d);
   });
 }
-$('#file').onchange=e=>{
-  for(const f of e.target.files)items.push({id:Date.now()+Math.random(),name:f.name,type:typeOf(f),blob:f,url:URL.createObjectURL(f)});
-  e.target.value='';renderList();save();
+$('#file').onchange=async e=>{
+  if(!cur)return;
+  const files=[...e.target.files];e.target.value='';
+  for(const f of files){
+    const it={id:uid(),name:f.name,type:typeOf(f),blob:f,url:URL.createObjectURL(f)};
+    try{await dbSet('b:'+it.id,f)}catch(err){memBlobs.set(it.id,f);toast('Sem espaço para guardar '+f.name+'. Vale só até fechar o app.')}
+    items.push(it);
+  }
+  renderList();saveMeta();
 };
-$('#clear').onclick=()=>{if(!items.length)return;if(!$('#clear').dataset.sure){$('#clear').dataset.sure=1;$('#clear').textContent='Toque de novo para confirmar';setTimeout(()=>{delete $('#clear').dataset.sure;$('#clear').textContent='Limpar tudo'},2500);return}
-  items.forEach(i=>URL.revokeObjectURL(i.url));items=[];delete $('#clear').dataset.sure;$('#clear').textContent='Limpar tudo';renderList();save()};
+confirmBtn($('#clear'),'Toque de novo para confirmar',()=>{
+  items.forEach(i=>{URL.revokeObjectURL(i.url);dbDel('b:'+i.id).catch(()=>{});memBlobs.delete(i.id)});
+  items=[];$('#clear').textContent='Limpar pasta';delete $('#clear').dataset.sure;renderList();saveMeta();
+});
 
 // ---------- área de toque ----------
 const zs=$('#zoneStage'),zb=$('#zoneBox');
+function setZone(z){zone=z;if(cur)cur.zone=z}
 function fitStage(){zs.style.aspectRatio=innerWidth+'/'+innerHeight}
-function drawZone(){zb.style.cssText+=`;left:${zone.x*100}%;top:${zone.y*100}%;width:${zone.w*100}%;height:${zone.h*100}%`}
-document.querySelectorAll('[data-z]').forEach(b=>b.onclick=()=>{const [x,y,w,h]=b.dataset.z.split(',').map(Number);zone={x,y,w,h};drawZone();save()});
+function drawZone(){zb.style.left=zone.x*100+'%';zb.style.top=zone.y*100+'%';zb.style.width=zone.w*100+'%';zb.style.height=zone.h*100+'%'}
+document.querySelectorAll('[data-z]').forEach(b=>b.onclick=()=>{const [x,y,w,h]=b.dataset.z.split(',').map(Number);setZone({x,y,w,h});drawZone();saveMeta()});
 let start=null;
 const pt=e=>{const r=zs.getBoundingClientRect();return{x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))}};
 zs.onpointerdown=e=>{zs.setPointerCapture(e.pointerId);start=pt(e)};
-zs.onpointermove=e=>{if(!start)return;const p=pt(e);zone={x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),w:Math.abs(p.x-start.x),h:Math.abs(p.y-start.y)};drawZone()};
-zs.onpointerup=()=>{if(!start)return;start=null;if(zone.w<.05||zone.h<.05)zone={x:0,y:0,w:1,h:1};drawZone();save()};
-$('#loop').onchange=e=>{opts.loop=e.target.checked;save()};
-$('#hint').onchange=e=>{opts.hint=e.target.checked;save()};
+zs.onpointermove=e=>{if(!start)return;const p=pt(e);setZone({x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),w:Math.abs(p.x-start.x),h:Math.abs(p.y-start.y)});drawZone()};
+zs.onpointerup=()=>{if(!start)return;start=null;if(zone.w<.05||zone.h<.05)setZone({x:0,y:0,w:1,h:1});drawZone();saveMeta()};
+$('#loop').onchange=e=>{if(cur){cur.loop=e.target.checked;saveMeta()}};
+$('#hint').onchange=e=>{if(cur){cur.hint=e.target.checked;saveMeta()}};
 
 // ---------- apresentação ----------
 function render(){
@@ -146,14 +250,14 @@ function render(){
     el.play().catch(()=>{el.muted=true;el.play().catch(()=>{})});
   }else{el=document.createElement('img');el.src=it.url;m.appendChild(el)}
 }
-function next(){if(idx<items.length-1)idx++;else if(opts.loop)idx=0;else return;render()}
+function next(){if(idx<items.length-1)idx++;else if(cur.loop)idx=0;else return;render()}
 function prev(){if(idx>0){idx--;render()}}
 async function startShow(){
-  if(!items.length){$('#status').textContent='Adicione pelo menos um item.';return}
+  if(!items.length){toast('Adicione pelo menos um item.');fromHome=false;return}
   idx=0;$('#show').classList.add('on');document.body.classList.add('showing');
   keepAwake();
-  const h=$('#zoneHint');h.style.display=opts.hint?'block':'none';
-  h.style.cssText+=`;left:${zone.x*100}%;top:${zone.y*100}%;width:${zone.w*100}%;height:${zone.h*100}%`;
+  const h=$('#zoneHint');h.style.display=cur.hint?'block':'none';
+  h.style.left=zone.x*100+'%';h.style.top=zone.y*100+'%';h.style.width=zone.w*100+'%';h.style.height=zone.h*100+'%';
   try{await document.documentElement.requestFullscreen()}catch(e){}
   render();
 }
@@ -161,6 +265,7 @@ function stopShow(){
   $('#media').innerHTML='';$('#show').classList.remove('on');document.body.classList.remove('showing');
   try{if(wl){wl.release();wl=null}}catch(e){}
   try{if(document.fullscreenElement)document.exitFullscreen()}catch(e){}
+  if(fromHome){fromHome=false;goHome()}
 }
 // mantém a tela acesa
 let wl=null;
@@ -172,10 +277,9 @@ const sh=$('#show');
 sh.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
 sh.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 sh.addEventListener('touchend',e=>e.preventDefault(),{passive:false});
-// se a tela cheia cair sem querer, volta no próximo toque
 function reFull(){if(sh.classList.contains('on')&&!document.fullscreenElement){try{document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}}}
 let taps=0,tt;
-$('#show').addEventListener('pointerdown',e=>{
+sh.addEventListener('pointerdown',e=>{
   e.preventDefault();
   if(!e.isPrimary)return;
   reFull();
@@ -184,21 +288,28 @@ $('#show').addEventListener('pointerdown',e=>{
   const x=e.clientX/innerWidth,y=e.clientY/innerHeight;
   if(x>=zone.x&&x<=zone.x+zone.w&&y>=zone.y&&y<=zone.y+zone.h)next();
 });
-$('#go').onclick=startShow;
+$('#go').onclick=()=>{fromHome=false;startShow()};
 addEventListener('resize',fitStage);
 if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
 
-// ---------- início ----------
+// ---------- início (e migração da versão antiga) ----------
 (async()=>{
-  fitStage();
   try{
-    const s=await dbGet('state');
-    if(s){zone=s.zone||zone;Object.assign(opts,s.opts||{});
-      items=(s.items||[]).map(i=>({...i,url:URL.createObjectURL(i.blob)}))}
-  }catch(e){}
-  $('#loop').checked=opts.loop;$('#hint').checked=opts.hint;
-  drawZone();renderList();
-  if(items.length)$('#status').textContent='Sequência anterior carregada.';
+    let m=await dbGet('meta');
+    if(!m){
+      m={folders:[]};
+      const old=await dbGet('state');
+      if(old&&old.items&&old.items.length){
+        const f={id:uid(),name:'Mágica 1',zone:old.zone||{x:0,y:0,w:1,h:1},loop:!!(old.opts&&old.opts.loop),hint:false,items:[]};
+        for(const it of old.items){const id=uid();await dbSet('b:'+id,it.blob);f.items.push({id,name:it.name,type:it.type})}
+        m.folders.push(f);
+      }
+      await dbSet('meta',m);
+      if(old){try{await dbDel('state')}catch(e){}}
+    }
+    meta=m;
+  }catch(e){toast('Armazenamento indisponível: nada será guardado ao fechar.')}
+  renderHome();
 })();
 </script>
 </body>
