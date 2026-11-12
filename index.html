@@ -46,7 +46,11 @@ input[type=text]{font:inherit;color:var(--tx);background:#0f151d;border:1px soli
 .it .nm{flex:1;font-size:13px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .it button{padding:8px 11px}
 #zoneStage{position:relative;width:100%;max-width:520px;background:#000;border:1px solid var(--line);border-radius:10px;touch-action:none;margin:12px 0;overflow:hidden}
-#zoneBox{position:absolute;background:rgba(34,211,238,.28);border:2px solid var(--cy);pointer-events:none}
+.zb{position:absolute;pointer-events:none;border:2px solid;display:none}
+#zb0{background:rgba(34,211,238,.28);border-color:#22d3ee}
+#zb1{background:rgba(244,114,182,.28);border-color:#f472b6}
+.tabs button.sel{border-color:var(--cy);background:#10303a;font-weight:700}
+select{font:inherit;color:var(--tx);background:#0f151d;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 #zoneStage span{position:absolute;left:8px;top:6px;font-size:12px;color:var(--mut);pointer-events:none}
 .chk{display:flex;gap:8px;align-items:center;margin-top:8px;color:var(--mut);font-size:14px}
 .chk input{width:20px;height:20px}
@@ -57,7 +61,9 @@ input[type=text]{font:inherit;color:var(--tx);background:#0f151d;border:1px soli
 #show.on{display:block}
 #media{position:absolute;inset:0}
 #media img,#media video{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}
-#zoneHint{position:absolute;border:2px dashed var(--cy);background:rgba(34,211,238,.12);pointer-events:none;display:none}
+.zh{position:absolute;border:2px dashed;pointer-events:none;display:none}
+#zh0{border-color:#22d3ee;background:rgba(34,211,238,.12)}
+#zh1{border-color:#f472b6;background:rgba(244,114,182,.12)}
 </style>
 </head>
 <body>
@@ -93,7 +99,15 @@ input[type=text]{font:inherit;color:var(--tx);background:#0f151d;border:1px soli
   </section>
 
   <section>
-    <h2>2 · Área de toque</h2>
+    <h2>2 · Áreas de toque</h2>
+    <div class="row tabs" style="margin-bottom:10px">
+      <button class="sel"><span style="color:#22d3ee">●</span> Área 1</button>
+      <button><span style="color:#f472b6">●</span> Área 2</button>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <label class="chk" style="margin:0"><input id="zOn" type="checkbox"> Usar esta área</label>
+      <label class="chk" style="margin:0 0 0 12px">Ao tocar: <select id="zAct"><option value="next">Próximo item</option><option value="prev">Item anterior</option></select></label>
+    </div>
     <div class="row">
       <button data-z="0,0,1,1">Tela toda</button>
       <button data-z="0.5,0,0.5,1">Metade direita</button>
@@ -101,7 +115,7 @@ input[type=text]{font:inherit;color:var(--tx);background:#0f151d;border:1px soli
       <button data-z="0,0.5,1,0.5">Metade de baixo</button>
       <button data-z="0.3,0.3,0.4,0.4">Centro</button>
     </div>
-    <div id="zoneStage"><span>Arraste aqui para desenhar a área</span><div id="zoneBox"></div></div>
+    <div id="zoneStage"><span>Arraste aqui para desenhar a área selecionada</span><div class="zb" id="zb0"></div><div class="zb" id="zb1"></div></div>
     <label class="chk"><input id="loop" type="checkbox"> Voltar ao primeiro depois do último</label>
     <label class="chk"><input id="hint" type="checkbox"> Mostrar contorno da área durante a apresentação (para testar)</label>
   </section>
@@ -114,12 +128,12 @@ input[type=text]{font:inherit;color:var(--tx);background:#0f151d;border:1px soli
 </div>
 
 <div id="toast"></div>
-<div id="show"><div id="media"></div><div id="zoneHint"></div></div>
+<div id="show"><div id="media"></div><div class="zh" id="zh0"></div><div class="zh" id="zh1"></div></div>
 
 <script>
 const $=s=>document.querySelector(s);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-let meta={folders:[]},cur=null,items=[],zone={x:0,y:0,w:1,h:1},idx=0,fromHome=false;
+let meta={folders:[]},cur=null,items=[],zones=[],sel=0,idx=0,fromHome=false;
 const memBlobs=new Map();
 
 // ---------- aviso rápido ----------
@@ -183,9 +197,10 @@ async function openFolder(id){
     if(!b){try{b=await dbGet('b:'+m.id)}catch(e){}}
     if(b)items.push({...m,blob:b,url:URL.createObjectURL(b)});
   }
-  zone=f.zone||{x:0,y:0,w:1,h:1};
+  if(!f.zones){f.zones=[{...(f.zone||{x:0,y:0,w:1,h:1}),act:'next',on:true},{x:0,y:0,w:.5,h:1,act:'next',on:false}];delete f.zone}
+  f.zones[0].on=true;zones=f.zones;
   $('#fname').value=f.name;$('#loop').checked=!!f.loop;$('#hint').checked=!!f.hint;
-  renderList();view('folder');fitStage();drawZone();scrollTo(0,0);toast('');
+  renderList();view('folder');fitStage();selectZone(0);scrollTo(0,0);toast('');
   return true;
 }
 async function playFolder(id){if(await openFolder(id)){fromHome=true;startShow()}}
@@ -228,16 +243,28 @@ confirmBtn($('#clear'),'Toque de novo para confirmar',()=>{
 });
 
 // ---------- área de toque ----------
-const zs=$('#zoneStage'),zb=$('#zoneBox');
-function setZone(z){zone=z;if(cur)cur.zone=z}
+const zs=$('#zoneStage');
+const FULL={x:0,y:0,w:1,h:1};
 function fitStage(){zs.style.aspectRatio=innerWidth+'/'+innerHeight}
-function drawZone(){zb.style.left=zone.x*100+'%';zb.style.top=zone.y*100+'%';zb.style.width=zone.w*100+'%';zb.style.height=zone.h*100+'%'}
-document.querySelectorAll('[data-z]').forEach(b=>b.onclick=()=>{const [x,y,w,h]=b.dataset.z.split(',').map(Number);setZone({x,y,w,h});drawZone();saveMeta()});
+function drawZones(){
+  zones.forEach((z,i)=>{const b=$('#zb'+i);b.style.display=z.on?'block':'none';b.style.left=z.x*100+'%';b.style.top=z.y*100+'%';b.style.width=z.w*100+'%';b.style.height=z.h*100+'%'});
+}
+function selectZone(i){
+  sel=i;
+  document.querySelectorAll('.tabs button').forEach((b,k)=>b.classList.toggle('sel',k===i));
+  $('#zOn').checked=!!zones[i].on;$('#zOn').disabled=(i===0);
+  $('#zAct').value=zones[i].act||'next';
+  drawZones();
+}
+document.querySelectorAll('.tabs button').forEach((b,k)=>b.onclick=()=>selectZone(k));
+$('#zOn').onchange=e=>{zones[sel].on=e.target.checked;drawZones();saveMeta()};
+$('#zAct').onchange=e=>{zones[sel].act=e.target.value;saveMeta()};
+document.querySelectorAll('[data-z]').forEach(b=>b.onclick=()=>{const [x,y,w,h]=b.dataset.z.split(',').map(Number);Object.assign(zones[sel],{x,y,w,h,on:true});selectZone(sel);saveMeta()});
 let start=null;
 const pt=e=>{const r=zs.getBoundingClientRect();return{x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))}};
 zs.onpointerdown=e=>{zs.setPointerCapture(e.pointerId);start=pt(e)};
-zs.onpointermove=e=>{if(!start)return;const p=pt(e);setZone({x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),w:Math.abs(p.x-start.x),h:Math.abs(p.y-start.y)});drawZone()};
-zs.onpointerup=()=>{if(!start)return;start=null;if(zone.w<.05||zone.h<.05)setZone({x:0,y:0,w:1,h:1});drawZone();saveMeta()};
+zs.onpointermove=e=>{if(!start)return;const p=pt(e);Object.assign(zones[sel],{x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),w:Math.abs(p.x-start.x),h:Math.abs(p.y-start.y),on:true});drawZones()};
+zs.onpointerup=()=>{if(!start)return;start=null;const z=zones[sel];if(z.w<.05||z.h<.05)Object.assign(z,FULL);selectZone(sel);saveMeta()};
 $('#loop').onchange=e=>{if(cur){cur.loop=e.target.checked;saveMeta()}};
 $('#hint').onchange=e=>{if(cur){cur.hint=e.target.checked;saveMeta()}};
 
@@ -253,11 +280,10 @@ function render(){
 function next(){if(idx<items.length-1)idx++;else if(cur.loop)idx=0;else return;render()}
 function prev(){if(idx>0){idx--;render()}}
 async function startShow(){
-  if(!items.length){toast('Adicione pelo menos um item.');fromHome=false;return}
+  if(!items.length){toast('Adicione pelo menos um item.');fromHome=false;if(!$('#folder').hidden===false)return;return}
   idx=0;$('#show').classList.add('on');document.body.classList.add('showing');
   keepAwake();
-  const h=$('#zoneHint');h.style.display=cur.hint?'block':'none';
-  h.style.left=zone.x*100+'%';h.style.top=zone.y*100+'%';h.style.width=zone.w*100+'%';h.style.height=zone.h*100+'%';
+  zones.forEach((z,i)=>{const h=$('#zh'+i);h.style.display=(cur.hint&&z.on)?'block':'none';h.style.left=z.x*100+'%';h.style.top=z.y*100+'%';h.style.width=z.w*100+'%';h.style.height=z.h*100+'%'});
   try{await document.documentElement.requestFullscreen()}catch(e){}
   render();
 }
@@ -286,7 +312,7 @@ sh.addEventListener('pointerdown',e=>{
   if(e.clientX<90&&e.clientY<90){taps++;clearTimeout(tt);tt=setTimeout(()=>taps=0,1500);if(taps>=3){taps=0;stopShow()}return}
   if(e.clientX>innerWidth-90&&e.clientY<90){prev();return}
   const x=e.clientX/innerWidth,y=e.clientY/innerHeight;
-  if(x>=zone.x&&x<=zone.x+zone.w&&y>=zone.y&&y<=zone.y+zone.h)next();
+  for(const z of zones){if(z.on&&x>=z.x&&x<=z.x+z.w&&y>=z.y&&y<=z.y+z.h){if(z.act==='prev')prev();else next();break}}
 });
 $('#go').onclick=()=>{fromHome=false;startShow()};
 addEventListener('resize',fitStage);
